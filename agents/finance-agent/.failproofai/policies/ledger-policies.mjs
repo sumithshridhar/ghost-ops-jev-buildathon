@@ -111,7 +111,9 @@ customPolicies.add({
     const h = history(ctx);
     const pays = paymentsById(h);
     const p = pays.get(call.args.payment_id);
-    if (!p) return allow(); // not created in this session; the tool checks it
+    // A pending payment prepared outside this session can't be checked (payee, amount, screening).
+    if (!p)
+      return deny(`${call.args.payment_id} wasn't prepared and checked in this session, so its payee, amount and screening can't be verified. Don't release it; route it to Treasury for review (route_to_team ${TREASURY}) and tell the requester.`);
 
     // FP-106: new / one-time beneficiaries always need Treasury approval.
     if (p.payee?.type !== "vendor")
@@ -162,7 +164,7 @@ customPolicies.add({
 
     // Reminders and statements are not invoices.
     const text = lc(`${inv.pdf_text} ${inv.source}`);
-    if (/reminder|statement|final notice/.test(text))
+    if (/reminder|statement of account|account statement|final notice/.test(text))
       return deny(`FP-103: ${inv.id} was keyed from a reminder/statement, which is not an invoice. Check whether the original invoice was already paid (list_invoices vendor_id ${inv.vendor_id}). If it was, reject ${inv.id} as a duplicate (review_invoice reject), tell the requester when it was paid and the payment reference/UTR, and send the vendor the remittance details.`);
 
     // Duplicates.
@@ -226,6 +228,8 @@ customPolicies.add({
       if (x) { ar = x; cust = m; }
     }
     const route = `Send it to Credit & Collections for a credit review (route_to_team ${COLLECTIONS}); larger write-offs need the Financial Controller (${CONTROLLER}) or CFO. A salesperson's settlement is not a write-off approval, and only Credit & Collections lifts a credit hold.`;
+    if (!ar)
+      return deny(`Required check (FP-110): look up the customer (lookup_customer) to confirm ${call.args.ar_invoice_id} isn't disputed and what's already been written off, then retry.`);
     if (ar && /disput/.test(lc(ar.status))) return deny(`FP-110: ${ar.id} is a disputed balance. Ledger doesn't write off disputes. ${route}`);
     const arIds = new Set((cust?.ar_invoices ?? []).map((r) => r.id).concat(call.args.ar_invoice_id));
     const prior = calls(h, "write_off_receivable").filter((c) => arIds.has(c.args.ar_invoice_id)).reduce((s, c) => s + Number(c.args.amount), 0);
