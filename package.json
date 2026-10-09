@@ -1,0 +1,8 @@
+{
+  "name": "ghost-ops-jev-buildathon",
+  "private": true,
+  "description": "Guard rules for a finance AI agent (Jev Buildathon), with offline tests",
+  "scripts": {
+    "test": "node tests/run.mjs"
+  }
+}

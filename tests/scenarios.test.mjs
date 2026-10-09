@@ -1,11 +1,14 @@
 // Adversarial unit tests for ledger-policies.mjs: new vendors, people, amounts and formats
 // that never appear in the practice round. Each case feeds a synthetic Claude Code
 // transcript to every policy and checks the first non-allow decision.
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { registry } from "failproofai";
 await import("../agents/finance-agent/.failproofai/policies/ledger-policies.mjs");
 
 let n = 0;
+const tmp = mkdtempSync(join(tmpdir(), "ledger-scenarios-"));
 function transcript(steps) {
   const lines = [JSON.stringify({ type: "user", message: { content: "Work the item." } })];
   steps.forEach(([tool, input, result], i) => {
@@ -13,7 +16,7 @@ function transcript(steps) {
     lines.push(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id, name: `mcp__finance__${tool}`, input }] } }));
     lines.push(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: JSON.stringify(result) }] } }));
   });
-  const p = `/tmp/pt-${process.pid}-${++n}.jsonl`;
+  const p = join(tmp, `pt-${++n}.jsonl`);
   writeFileSync(p, lines.join("\n"));
   return p;
 }
@@ -139,3 +142,5 @@ for (const [name, expect, steps, tool, input] of cases) {
 }
 console.log(`\n${pass}/${cases.length} passed`);
 for (const f of fails) console.log("  ✗ " + f);
+rmSync(tmp, { recursive: true, force: true });
+if (fails.length) process.exitCode = 1; // lets CI and `&&` see a failure
